@@ -1,0 +1,206 @@
+require("dotenv").config();
+
+const stripe = require("stripe")(process.env.VITE_SECRET_KEY);
+const express = require("express");
+const cors = require("cors");
+const app = express();
+const port = process.env.PORT || 5000;
+
+// middleware
+app.use(cors());
+app.use(express.json());
+
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.h2tkvzo.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
+
+// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+const client = new MongoClient(uri, {
+  serverApi: {
+    version: ServerApiVersion.v1,
+    strict: true,
+    deprecationErrors: true,
+  },
+});
+
+async function run() {
+  try {
+    // ---------------------------COLLECTIONS START---------------------------------
+    const productsCollection = client.db("product-hunt").collection("products");
+    const userCollection = client.db("product-hunt").collection("users");
+    const paymentCollection = client.db("product-hunt").collection("payments");
+    // ---------------------------COLLECTIONS END---------------------------------
+
+    // ----------------------------PAYMENT INTENT START--------------------------------------
+
+    app.post("/create-payment-intent", async (req, res) => {
+      const { price } = req.body;
+      const amount = parseInt(price * 100);
+
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amount,
+        currency: "usd",
+        payment_method_types: ["card"],
+      });
+      res.send({ clientSecret: paymentIntent.client_secret });
+    });
+
+    // Save payment History
+    app.post("/payments", async (req, res) => {
+      const paymentInfo = req.body;
+      const result = await paymentCollection.insertOne(paymentInfo);
+      res.send(result);
+    });
+
+    // ----------------------------PAYMENT INTENT END--------------------------------------
+
+    // ----------------------------PRODUCTS COLLECTION START----------------------------------
+    // Save Products
+    app.post("/products", async (req, res) => {
+      const products = req.body;
+      const result = await productsCollection.insertOne(products);
+      res.send(result);
+    });
+
+    // get products data for products page
+    app.get("/all-product", async (req, res) => {
+      const result = await productsCollection.find().toArray();
+      res.send(result);
+    });
+
+    // get products data count
+    app.get("/all-product-count", async (req, res) => {
+      const count = await productsCollection.estimatedDocumentCount();
+      res.send({ count });
+    });
+
+    // Pagination
+    app.get("/product-pagination", async (req, res) => {
+      const page = Number(req.query.page);
+      const size = Number(req.query.size);
+
+      const result = await productsCollection
+        .find()
+        .skip(page * size)
+        .limit(size)
+        .toArray();
+      res.send(result);
+    });
+    // get products data search by tags
+    app.get("/product/search", async (req, res) => {
+      const searchTags = req.query.tags;
+
+      let query = {
+        tags: {
+          $regex: searchTags,
+          $options: "i",
+        },
+      };
+      const result = await productsCollection.find(query).toArray();
+      res.send(result);
+    });
+    // get products data
+    app.get("/products", async (req, res) => {
+      const result = await productsCollection
+        .find()
+        .sort({ timestamp: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
+    // get products data
+    app.get("/products", async (req, res) => {
+      const result = await productsCollection
+        .find()
+        .sort({ timestamp: -1 })
+        .limit(6)
+        .toArray();
+      res.send(result);
+    });
+
+    // Products data votes update
+    app.patch("/products/vote/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const { userEmail } = req.body;
+
+      const product = await productsCollection.findOne(filter);
+
+      if (!product) {
+        return res.status(404).send({ message: "Product not found" });
+      }
+
+      //   Only one time a user can vote
+      if (product.votedUser === userEmail) {
+        return res.status(403).send({ message: "You already voted" });
+      }
+      const update = {
+        $inc: { votes: 1 },
+        $set: { votedUser: userEmail },
+      };
+
+      const result = await productsCollection.updateOne(filter, update);
+
+      res.send(result);
+    });
+
+    // ----------------------------PRODUCTS COLLECTION END----------------------------------
+
+    //  ----------------------------USER COLLECTION START-------------------------------------
+
+    // Save user
+    app.post("/user/:email", async (req, res) => {
+      const email = req.params.email;
+      const user = req.body;
+      const query = { email };
+      const isExist = await userCollection.findOne(query);
+      if (isExist) return isExist;
+      const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
+    // get user by specific email
+    app.get("/user/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = {
+        email,
+      };
+      const result = await userCollection.findOne(query);
+      res.send(result);
+    });
+
+    // User collection data update after successful payment
+    app.patch("/data-update/:id", async (req, res) => {
+      const id = req.params.id;
+      const { isSubscribed, subscriptionDate, paymentVerified, status } =
+        req.body;
+      const filter = { _id: new ObjectId(id) };
+      const update = {
+        $set: { isSubscribed, subscriptionDate, paymentVerified, status },
+      };
+      const result = await userCollection.updateOne(filter, update);
+     res.send(result)
+    });
+
+    //  ----------------------------USER COLLECTION END-------------------------------------
+
+    // Connect the client to the server	(optional starting in v4.7)
+    await client.connect();
+    // Send a ping to confirm a successful connection
+    await client.db("admin").command({ ping: 1 });
+    console.log(
+      "Pinged your deployment. You successfully connected to MongoDB!"
+    );
+  } finally {
+    // Ensures that the client will close when you finish/error
+    // await client.close();
+  }
+}
+run().catch(console.dir);
+
+app.get("/", (req, res) => {
+  res.send("Product hunt website");
+});
+
+app.listen(port, () => {
+  console.log("The product hunt website run on port", port);
+});
