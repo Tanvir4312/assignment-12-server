@@ -28,6 +28,7 @@ async function run() {
     const productsCollection = client.db("product-hunt").collection("products");
     const userCollection = client.db("product-hunt").collection("users");
     const paymentCollection = client.db("product-hunt").collection("payments");
+    const reviewCollection = client.db("product-hunt").collection("reviews");
     // ---------------------------COLLECTIONS END---------------------------------
 
     // ----------------------------PAYMENT INTENT START--------------------------------------
@@ -107,15 +108,6 @@ async function run() {
         .toArray();
       res.send(result);
     });
-    // get products data
-    app.get("/products", async (req, res) => {
-      const result = await productsCollection
-        .find()
-        .sort({ timestamp: -1 })
-        .limit(6)
-        .toArray();
-      res.send(result);
-    });
 
     // get Products data by specific email
     app.get("/specific-product/:email", async (req, res) => {
@@ -173,14 +165,57 @@ async function run() {
 
       res.send(result);
     });
+    // Products data Report update
+    app.patch("/products/report/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const { userEmail } = req.body;
+
+      const product = await productsCollection.findOne(filter);
+
+      if (!product) {
+        return res.status(404).send({ message: "Product not found" });
+      }
+
+      //   Only one time a user can report
+      if (product.reportedUser === userEmail) {
+        return res
+          .status(403)
+          .send({
+            message: "You already Report, Please wait for moderator action.",
+          });
+      }
+      const update = {
+        $inc: { report: 1 },
+        $set: { reportedUser: userEmail, status: "reported" },
+      };
+
+      const result = await productsCollection.updateOne(filter, update);
+
+      res.send(result);
+    });
 
     // product data delete
-    app.delete('/product-data-delete/:id', async(req, res) =>{
+    app.delete("/product-data-delete/:id", async (req, res) => {
       const id = req.params.id;
-      const query = {_id: new ObjectId(id)}
-      const result = await productsCollection.deleteOne(query)
-      res.send(result)
-    })
+      const query = { _id: new ObjectId(id) };
+      const result = await productsCollection.deleteOne(query);
+      res.send(result);
+    });
+
+    // get product data for moderator review
+    app.get("/product-review", async (req, res) => {
+      const result = await productsCollection.find().toArray();
+      res.send(result);
+    });
+
+    // get product data by id for Details
+    app.get("/product-details/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await productsCollection.findOne(query);
+      res.send(result);
+    });
 
     // ----------------------------PRODUCTS COLLECTION END----------------------------------
 
@@ -194,6 +229,14 @@ async function run() {
       const isExist = await userCollection.findOne(query);
       if (isExist) return isExist;
       const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
+    // get user by email
+    app.get("/user/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = { email };
+      const result = await userCollection.findOne(query);
       res.send(result);
     });
 
@@ -221,6 +264,28 @@ async function run() {
     });
 
     //  ----------------------------USER COLLECTION END-------------------------------------
+
+    // -----------------------------REVIEWS COLLECTION START--------------------------------
+
+    // Save review data
+    app.post("/review-data", async (req, res) => {
+      const review = req.body;
+      const result = await reviewCollection.insertOne(review);
+      res.send(result);
+    });
+
+    // get specific review data 
+    app.get("/reviews/:id", async (req, res) => {
+      const productId = req.params.id;
+      const query = { productId };
+      if(!productId){
+        return res.send({message: 'No Reviews'})
+      }
+      const result = await reviewCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // -----------------------------REVIEWS COLLECTION END----------------------------------
 
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
