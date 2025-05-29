@@ -117,6 +117,37 @@ async function run() {
       res.send(result);
     });
 
+    // get Products data by specific email
+    app.get("/specific-product/:email", async (req, res) => {
+      const email = req.params.email;
+      const query = {
+        ownerEmail: email,
+      };
+      const result = await productsCollection.find(query).toArray();
+      res.send(result);
+    });
+
+    // get product data by id for update
+    app.get("/get-product/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await productsCollection.findOne(query);
+      res.send(result);
+    });
+
+    // products Data update
+    app.put("/product-update/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateProduct = req.body;
+      const filter = { _id: new ObjectId(id) };
+
+      const update = {
+        $set: updateProduct,
+      };
+      const result = await productsCollection.updateOne(filter, update);
+      res.send(result);
+    });
+
     // Products data votes update
     app.patch("/products/vote/:id", async (req, res) => {
       const id = req.params.id;
@@ -178,7 +209,7 @@ async function run() {
         $set: { isSubscribed, subscriptionDate, paymentVerified, status },
       };
       const result = await userCollection.updateOne(filter, update);
-     res.send(result)
+      res.send(result);
     });
 
     //  ----------------------------USER COLLECTION END-------------------------------------
