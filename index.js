@@ -64,7 +64,9 @@ async function run() {
 
     // get products data for products page
     app.get("/all-product", async (req, res) => {
-      const result = await productsCollection.find().toArray();
+      const result = await productsCollection
+        .find()
+        .toArray();
       res.send(result);
     });
 
@@ -104,7 +106,6 @@ async function run() {
       const result = await productsCollection
         .find()
         .sort({ timestamp: -1 })
-        .limit(6)
         .toArray();
       res.send(result);
     });
@@ -179,19 +180,45 @@ async function run() {
 
       //   Only one time a user can report
       if (product.reportedUser === userEmail) {
-        return res
-          .status(403)
-          .send({
-            message: "You already Report, Please wait for moderator action.",
-          });
+        return res.status(403).send({
+          message: "You already Report, Please wait for moderator action.",
+        });
       }
       const update = {
         $inc: { report: 1 },
-        $set: { reportedUser: userEmail, status: "reported" },
+        $set: { reportedUser: userEmail, reportedStatus: "reported" },
       };
 
       const result = await productsCollection.updateOne(filter, update);
 
+      res.send(result);
+    });
+
+    // Products data update by moderator
+    app.patch("/product/reviewQueue-update/:id", async (req, res) => {
+      const id = req.params.id;
+      const { status } = req.body;
+      const query = { _id: new ObjectId(id) };
+      let update = {
+        $set: {
+          isFeatured: true,
+        },
+      };
+      if (status === "Accepted") {
+        update = {
+          $set: {
+            status,
+          },
+        };
+      }
+      if (status === "Rejected") {
+        update = {
+          $set: {
+            status,
+          },
+        };
+      }
+      const result = await productsCollection.updateOne(query, update);
       res.send(result);
     });
 
@@ -206,6 +233,11 @@ async function run() {
     // get product data for moderator review
     app.get("/product-review", async (req, res) => {
       const result = await productsCollection.find().toArray();
+      res.send(result);
+    });
+    // get report product data for moderator action
+    app.get("/product-reported", async (req, res) => {
+      const result = await productsCollection.find({reportedStatus: "reported"}).toArray();
       res.send(result);
     });
 
@@ -274,12 +306,12 @@ async function run() {
       res.send(result);
     });
 
-    // get specific review data 
+    // get specific review data
     app.get("/reviews/:id", async (req, res) => {
       const productId = req.params.id;
       const query = { productId };
-      if(!productId){
-        return res.send({message: 'No Reviews'})
+      if (!productId) {
+        return res.send({ message: "No Reviews" });
       }
       const result = await reviewCollection.find(query).toArray();
       res.send(result);
