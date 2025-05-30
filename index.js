@@ -29,6 +29,7 @@ async function run() {
     const userCollection = client.db("product-hunt").collection("users");
     const paymentCollection = client.db("product-hunt").collection("payments");
     const reviewCollection = client.db("product-hunt").collection("reviews");
+    const couponCollection = client.db("product-hunt").collection("coupons");
     // ---------------------------COLLECTIONS END---------------------------------
 
     // ----------------------------PAYMENT INTENT START--------------------------------------
@@ -349,6 +350,55 @@ async function run() {
     });
 
     // -----------------------------REVIEWS COLLECTION END----------------------------------
+
+    // -----------------------------ADMIN STATE-------------------------------------------
+    // get data for admin statistic page
+    app.get('/admin-state', async(req, res) =>{
+      const productCount = await productsCollection.estimatedDocumentCount()
+      const acceptedCount = await productsCollection.countDocuments({ status: "accepted" });
+      const pendingCount = await productsCollection.countDocuments({ status: "pending" });
+      const reviewCount = await reviewCollection.estimatedDocumentCount()
+      const usersCount = await userCollection.estimatedDocumentCount()
+
+      res.send({productCount, acceptedCount, pendingCount, reviewCount, usersCount})
+    })
+
+
+    // -----------------------------Coupon----------------------------------
+
+    // save coupon data
+    app.post("/coupons", async (req, res) => {
+      const coupons = req.body;
+      const result = await couponCollection.insertOne(coupons);
+      res.send(result);
+    });
+
+    // get coupons data 
+    app.get("/all-coupon", async (req, res) => {
+      const result = await couponCollection.find().toArray();
+      res.send(result);
+    });
+
+      // Coupon data delete
+    app.delete("/coupon-data-delete/:id", async (req, res) => {
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await couponCollection.deleteOne(query);
+      res.send(result);
+    });
+
+      // Coupon Data update
+    app.put("/coupon-update/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateCoupon = req.body;
+      const filter = { _id: new ObjectId(id) };
+
+      const update = {
+        $set: updateCoupon,
+      };
+      const result = await couponCollection.updateOne(filter, update);
+      res.send(result);
+    });
 
     // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
