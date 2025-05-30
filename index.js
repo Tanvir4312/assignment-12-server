@@ -64,9 +64,7 @@ async function run() {
 
     // get products data for products page
     app.get("/all-product", async (req, res) => {
-      const result = await productsCollection
-        .find()
-        .toArray();
+      const result = await productsCollection.find().toArray();
       res.send(result);
     });
 
@@ -237,7 +235,9 @@ async function run() {
     });
     // get report product data for moderator action
     app.get("/product-reported", async (req, res) => {
-      const result = await productsCollection.find({reportedStatus: "reported"}).toArray();
+      const result = await productsCollection
+        .find({ reportedStatus: "reported" })
+        .toArray();
       res.send(result);
     });
 
@@ -261,6 +261,15 @@ async function run() {
       const isExist = await userCollection.findOne(query);
       if (isExist) return isExist;
       const result = await userCollection.insertOne(user);
+      res.send(result);
+    });
+
+    // get all user
+    app.get("/all-user/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await userCollection
+        .find({ email: { $ne: email } })
+        .toArray();
       res.send(result);
     });
 
@@ -292,6 +301,28 @@ async function run() {
         $set: { isSubscribed, subscriptionDate, paymentVerified, status },
       };
       const result = await userCollection.updateOne(filter, update);
+      res.send(result);
+    });
+
+    // user collection update by admin action
+    app.patch("/user-update/:id", async (req, res) => {
+      const id = req.params.id;
+      const { role } = req.body;
+      const query = { _id: new ObjectId(id) };
+      let update = {};
+      if (role === "moderator") {
+        update = {
+          $set: {
+            role,
+          },
+        };
+      }
+      if (role === "admin") {
+        update = {
+          $set: { role },
+        };
+      }
+      const result = await userCollection.updateOne(query, update);
       res.send(result);
     });
 
