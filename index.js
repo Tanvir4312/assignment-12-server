@@ -112,9 +112,9 @@ async function run() {
       const email = products.ownerEmail;
       const user = await userCollection.findOne({ email });
 
-      // if (!user) {
-      //   return res.status(404).send({ message: "User not found" });
-      // }
+      if (!user) {
+        return res.status(409).send({ message: "User not found" });
+      }
 
       // Count how many products this user already added
       const productCount = await productsCollection.countDocuments({
@@ -123,7 +123,7 @@ async function run() {
 
       // Check if user is not subscribed and already added 1 product
       if (!user.isSubscribed && productCount >= 1) {
-        return res.send({ message: "Free users can only add 1 product" });
+        return res.status(409).send({ message: "Free users can only add 1 product" });
       }
       const result = await productsCollection.insertOne(products);
       res.send(result);
@@ -216,12 +216,12 @@ async function run() {
       const product = await productsCollection.findOne(filter);
 
       if (!product) {
-        return res.status(404).send({ message: "Product not found" });
+        return res.status(409).send({ message: "Product not found" });
       }
 
       //   Only one time a user can vote
       if (product.votedUser === userEmail) {
-        return res.send({ message: "You already voted" });
+        return res.status(409).send({ message: "You already voted" });
       }
       const update = {
         $inc: { votes: 1 },
@@ -241,12 +241,12 @@ async function run() {
       const product = await productsCollection.findOne(filter);
 
       if (!product) {
-        return res.status(404).send({ message: "Product not found" });
+        return res.status(409).send({ message: "Product not found" });
       }
 
       //   Only one time a user can report
       if (product.reportedUser === userEmail) {
-        return res.send({
+        return res.status(409).send({
           message: "You already Report, Please wait for moderator action.",
         });
       }
@@ -407,7 +407,7 @@ async function run() {
       const productId = req.params.id;
       const query = { productId };
       if (!productId) {
-        return res.send({ message: "No Reviews" });
+        return res.status(409).send({ message: "No Reviews" });
       }
       const result = await reviewCollection.find(query).toArray();
       res.send(result);
