@@ -45,7 +45,7 @@ async function run() {
     // middlewares-----------------
     // verify Token
     const verifyToken = async (req, res, next) => {
-      console.log("Insider Middleware", req.headers.authorization);
+    
       if (!req.headers.authorization) {
         return res.status(401).send({ message: "unAuthorizes access" });
       }
@@ -112,9 +112,9 @@ async function run() {
       const email = products.ownerEmail;
       const user = await userCollection.findOne({ email });
 
-      if (!user) {
-        return res.status(404).send({ message: "User not found" });
-      }
+      // if (!user) {
+      //   return res.status(404).send({ message: "User not found" });
+      // }
 
       // Count how many products this user already added
       const productCount = await productsCollection.countDocuments({
@@ -221,7 +221,7 @@ async function run() {
 
       //   Only one time a user can vote
       if (product.votedUser === userEmail) {
-        return res.status(403).send({ message: "You already voted" });
+        return res.send({ message: "You already voted" });
       }
       const update = {
         $inc: { votes: 1 },
@@ -246,7 +246,7 @@ async function run() {
 
       //   Only one time a user can report
       if (product.reportedUser === userEmail) {
-        return res.status(403).send({
+        return res.send({
           message: "You already Report, Please wait for moderator action.",
         });
       }
