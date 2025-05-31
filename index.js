@@ -1,5 +1,5 @@
 require("dotenv").config();
-
+const jwt = require("jsonwebtoken");
 const stripe = require("stripe")(process.env.VITE_SECRET_KEY);
 const express = require("express");
 const cors = require("cors");
@@ -32,6 +32,56 @@ async function run() {
     const couponCollection = client.db("product-hunt").collection("coupons");
     // ---------------------------COLLECTIONS END---------------------------------
 
+    // ---------------------------jwt--------------------------
+    // Create jwt
+    app.post("/jwt", async (req, res) => {
+      const user = req.body;
+      const token = jwt.sign(user, process.env.ACCESS_TOKEN_SECRET, {
+        expiresIn: "150d",
+      });
+      res.send({ token });
+    });
+
+    // middlewares-----------------
+    // verify Token
+    const verifyToken = async (req, res, next) => {
+      console.log("Insider Middleware", req.headers.authorization);
+      if (!req.headers.authorization) {
+        return res.status(401).send({ message: "unAuthorizes access" });
+      }
+      const token = req.headers.authorization.split(" ")[1];
+      jwt.verify(token, process.env.ACCESS_TOKEN_SECRET, (err, decoded) => {
+        if (err) {
+          return res.status(401).send({ message: "unAuthorizes access" });
+        }
+        req.user = decoded;
+        next();
+      });
+    };
+
+    // Verify admin
+    const verifyAdmin = async (req, res, next) =>{
+      const email = req.user.email
+      const query = {email}
+      const user = await userCollection.findOne(query)
+
+      if(!user || user.role !== 'admin'){
+        return res.status(403).send({message: 'Forbidden access'})
+      }
+      next()
+    }
+    // Verify Moderator
+    const verifyModerator = async (req, res, next) =>{
+      const email = req.user.email
+      const query = {email}
+      const user = await userCollection.findOne(query)
+
+      if(!user || user.role !== 'moderator'){
+        return res.status(403).send({message: 'Forbidden access'})
+      }
+      next()
+    }
+
     // ----------------------------PAYMENT INTENT START--------------------------------------
 
     app.post("/create-payment-intent", async (req, res) => {
@@ -57,10 +107,27 @@ async function run() {
 
     // ----------------------------PRODUCTS COLLECTION START----------------------------------
     // Save Products
-    app.post("/products", async (req, res) => {
+    app.post("/products", verifyToken, async (req, res) => {
       const products = req.body;
+      const email = products.ownerEmail;
+      const user = await userCollection.findOne({ email });
+
+      if (!user) {
+        return res.status(404).send({ message: "User not found" });
+      }
+
+      // Count how many products this user already added
+      const productCount = await productsCollection.countDocuments({
+        ownerEmail: email,
+      });
+
+      // Check if user is not subscribed and already added 1 product
+      if (!user.isSubscribed && productCount >= 1) {
+        return res.send({ message: "Free users can only add 1 product" });
+      }
       const result = await productsCollection.insertOne(products);
       res.send(result);
+     
     });
 
     // get products data for products page
@@ -128,7 +195,7 @@ async function run() {
     });
 
     // products Data update
-    app.put("/product-update/:id", async (req, res) => {
+    app.put("/product-update/:id",  async (req, res) => {
       const id = req.params.id;
       const updateProduct = req.body;
       const filter = { _id: new ObjectId(id) };
@@ -197,6 +264,7 @@ async function run() {
     app.patch("/product/reviewQueue-update/:id", async (req, res) => {
       const id = req.params.id;
       const { status } = req.body;
+
       const query = { _id: new ObjectId(id) };
       let update = {
         $set: {
@@ -243,7 +311,7 @@ async function run() {
     });
 
     // get product data by id for Details
-    app.get("/product-details/:id", async (req, res) => {
+    app.get("/product-details/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await productsCollection.findOne(query);
@@ -266,24 +334,13 @@ async function run() {
     });
 
     // get all user
-    app.get("/all-user/:email", async (req, res) => {
-      const email = req.params.email;
-      const result = await userCollection
-        .find({ email: { $ne: email } })
-        .toArray();
-      res.send(result);
-    });
-
-    // get user by email
-    app.get("/user/:email", async (req, res) => {
-      const email = req.params.email;
-      const query = { email };
-      const result = await userCollection.findOne(query);
+    app.get("/all-user", verifyToken, verifyAdmin, async (req, res) => {
+      const result = await userCollection.find().toArray();
       res.send(result);
     });
 
     // get user by specific email
-    app.get("/user/:email", async (req, res) => {
+    app.get("/user/:email",  async (req, res) => {
       const email = req.params.email;
       const query = {
         email,
@@ -291,6 +348,13 @@ async function run() {
       const result = await userCollection.findOne(query);
       res.send(result);
     });
+
+    // get user Role
+    app.get('/user/role/:email', async(req, res) =>{
+      const email = req.params.email;
+      const user = await userCollection.findOne({email})
+      res.send({role: user?.role})
+    })
 
     // User collection data update after successful payment
     app.patch("/data-update/:id", async (req, res) => {
@@ -353,16 +417,25 @@ async function run() {
 
     // -----------------------------ADMIN STATE-------------------------------------------
     // get data for admin statistic page
-    app.get('/admin-state', async(req, res) =>{
-      const productCount = await productsCollection.estimatedDocumentCount()
-      const acceptedCount = await productsCollection.countDocuments({ status: "accepted" });
-      const pendingCount = await productsCollection.countDocuments({ status: "pending" });
-      const reviewCount = await reviewCollection.estimatedDocumentCount()
-      const usersCount = await userCollection.estimatedDocumentCount()
+    app.get("/admin-state",async (req, res) => {
+      const productCount = await productsCollection.estimatedDocumentCount();
+      const acceptedCount = await productsCollection.countDocuments({
+        status: "Accepted",
+      });
+      const pendingCount = await productsCollection.countDocuments({
+        status: "pending",
+      });
+      const reviewCount = await reviewCollection.estimatedDocumentCount();
+      const usersCount = await userCollection.estimatedDocumentCount();
 
-      res.send({productCount, acceptedCount, pendingCount, reviewCount, usersCount})
-    })
-
+      res.send({
+        productCount,
+        acceptedCount,
+        pendingCount,
+        reviewCount,
+        usersCount,
+      });
+    });
 
     // -----------------------------Coupon----------------------------------
 
@@ -373,13 +446,13 @@ async function run() {
       res.send(result);
     });
 
-    // get coupons data 
+    // get coupons data
     app.get("/all-coupon", async (req, res) => {
       const result = await couponCollection.find().toArray();
       res.send(result);
     });
 
-      // Coupon data delete
+    // Coupon data delete
     app.delete("/coupon-data-delete/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
@@ -387,7 +460,7 @@ async function run() {
       res.send(result);
     });
 
-      // Coupon Data update
+    // Coupon Data update
     app.put("/coupon-update/:id", async (req, res) => {
       const id = req.params.id;
       const updateCoupon = req.body;
@@ -401,12 +474,12 @@ async function run() {
     });
 
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
     // Ensures that the client will close when you finish/error
     // await client.close();
