@@ -107,7 +107,7 @@ async function run() {
 
     // ----------------------------PRODUCTS COLLECTION START----------------------------------
     // Save Products
-    app.post("/products", verifyToken, async (req, res) => {
+    app.post("/products", async (req, res) => {
       const products = req.body;
       const email = products.ownerEmail;
       const user = await userCollection.findOne({ email });
@@ -311,7 +311,7 @@ async function run() {
     });
 
     // get product data by id for Details
-    app.get("/product-details/:id", verifyToken, async (req, res) => {
+    app.get("/product-details/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await productsCollection.findOne(query);
@@ -334,7 +334,7 @@ async function run() {
     });
 
     // get all user
-    app.get("/all-user", verifyToken, verifyAdmin, async (req, res) => {
+    app.get("/all-user", verifyToken, async (req, res) => {
       const result = await userCollection.find().toArray();
       res.send(result);
     });
